@@ -70,17 +70,59 @@ async def conversation_websocket(
             await messaging.mark_read(conversation_id, user_id)
             await db.commit()
 
+        async with AsyncSessionLocal() as db:
+            user_repo = UserRepository(db)
+            user = await user_repo.get_by_id(user_id)
+            username = user.username if user else "Unknown"
+
         while True:
             data = await websocket.receive_text()
             try:
                 body = json.loads(data)
             except json.JSONDecodeError:
                 continue
+            
+            event_type = body.get("type", "message")
+            
+            if event_type == "typing":
+                from app.websocket.typing_indicator import TypingIndicatorManager
+                is_typing = body.get("is_typing", True)
+                await TypingIndicatorManager.set_typing(conversation_id, user_id, username, is_typing)
+                
+                typing_users = await TypingIndicatorManager.get_typing_users(conversation_id)
+                payload = {
+                    "type": "typing_indicator",
+                    "conversation_id": str(conversation_id),
+                    "typing_users": [
+                        {
+                            "user_id": uid,
+                            "username": data.get("username", ""),
+                            "timestamp": data.get("timestamp", ""),
+                        }
+                        for uid, data in typing_users.items()
+                    ],
+                }
+                await ws_manager.broadcast_to_conversation(conversation_id, payload)
+                continue
+            
             content = (body.get("content") or "").strip()
             if not content:
                 continue
 
             async with AsyncSessionLocal() as db:
+                from app.core.rate_limit import RateLimiter
+                allowed, retry_after = await RateLimiter.check_user_rate_limit(
+                    user_id, "send_message", 30, 60
+                )
+                if not allowed:
+                    error_payload = {
+                        "type": "error",
+                        "message": f"Rate limit exceeded. Retry after {retry_after} seconds",
+                        "retry_after": retry_after,
+                    }
+                    await ws_manager.send_to_connection(connection_id, error_payload)
+                    continue
+                
                 messaging = MessagingService(db)
                 try:
                     msg = await messaging.send_message(
@@ -112,7 +154,11 @@ async def conversation_websocket(
             await ws_manager.send_to_connection(connection_id, payload)
 
     except WebSocketDisconnect:
+        from app.websocket.typing_indicator import TypingIndicatorManager
+        await TypingIndicatorManager.clear_typing(conversation_id, user_id)
         await ws_manager.disconnect(connection_id, conversation_id)
     except Exception:
+        from app.websocket.typing_indicator import TypingIndicatorManager
+        await TypingIndicatorManager.clear_typing(conversation_id, user_id)
         await ws_manager.disconnect(connection_id, conversation_id)
         raise

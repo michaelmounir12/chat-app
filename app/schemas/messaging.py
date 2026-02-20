@@ -56,3 +56,30 @@ class MessagePayload(BaseModel):
     read_status: str = "sent"
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class MessageReadReceiptResponse(BaseModel):
+    id: UUID
+    message_id: UUID
+    user_id: UUID
+    read_at: datetime
+    user: Optional[UserResponse] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TypingIndicatorRequest(BaseModel):
+    is_typing: bool = True
+
+
+class TypingIndicatorResponse(BaseModel):
+    user_id: UUID
+    username: str
+    timestamp: datetime
+    is_typing: bool
+
+
+class PaginatedMessagesResponse(BaseModel):
+    messages: List[MessageResponse]
+    next_cursor: Optional[UUID] = None
+    has_more: bool = False

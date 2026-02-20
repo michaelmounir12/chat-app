@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 from uuid import uuid4
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, Table, Enum
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, Table, Enum, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -24,6 +24,8 @@ conversation_participants = Table(
     Base.metadata,
     Column("conversation_id", UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="CASCADE"), primary_key=True),
     Column("user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Index("idx_conversation_participants_user", "user_id"),
+    Index("idx_conversation_participants_conv", "conversation_id"),
 )
 
 
@@ -89,6 +91,10 @@ class Conversation(Base):
     
     participants = relationship("User", secondary=conversation_participants, back_populates="conversations")
     messages = relationship("Message", back_populates="conversation", cascade="all, delete-orphan")
+    
+    __table_args__ = (
+        Index("idx_conversations_type_created", "type", "created_at"),
+    )
 
 
 class Message(Base):
@@ -103,3 +109,26 @@ class Message(Base):
     
     conversation = relationship("Conversation", back_populates="messages")
     sender = relationship("User", back_populates="messages_sent")
+    read_receipts = relationship("MessageReadReceipt", back_populates="message", cascade="all, delete-orphan")
+    
+    __table_args__ = (
+        Index("idx_messages_conversation_created", "conversation_id", "created_at"),
+        Index("idx_messages_sender_conversation", "sender_id", "conversation_id"),
+    )
+
+
+class MessageReadReceipt(Base):
+    __tablename__ = "message_read_receipts"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4, index=True)
+    message_id = Column(UUID(as_uuid=True), ForeignKey("messages.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    read_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    
+    message = relationship("Message", back_populates="read_receipts")
+    user = relationship("User")
+    
+    __table_args__ = (
+        Index("idx_read_receipts_message_user", "message_id", "user_id", unique=True),
+        Index("idx_read_receipts_user_read_at", "user_id", "read_at"),
+    )

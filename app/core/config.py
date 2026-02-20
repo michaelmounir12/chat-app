@@ -36,6 +36,14 @@ class Settings(BaseSettings):
     # WebSocket
     WS_HEARTBEAT_INTERVAL: int = 30
     
+    # Rate Limiting
+    RATE_LIMIT_REQUESTS_PER_MINUTE: int = 60
+    RATE_LIMIT_REQUESTS_PER_HOUR: int = 1000
+    RATE_LIMIT_MESSAGE_PER_MINUTE: int = 30
+    
+    # Logging
+    LOG_LEVEL: str = "INFO"
+    
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

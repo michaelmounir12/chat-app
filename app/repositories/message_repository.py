@@ -1,5 +1,6 @@
 from typing import List, Optional
 from uuid import UUID
+from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -24,6 +25,25 @@ class MessageRepository(BaseRepository[Message]):
             .options(selectinload(Message.sender))
         )
         query = query.offset(skip).limit(limit)
+        result = await self.db.execute(query)
+        return list(result.scalars().all())
+
+    async def get_by_conversation_after(
+        self,
+        conversation_id: UUID,
+        after_timestamp: datetime,
+        limit: int = 100,
+    ) -> List[Message]:
+        query = (
+            select(Message)
+            .where(
+                Message.conversation_id == conversation_id,
+                Message.created_at > after_timestamp,
+            )
+            .order_by(Message.created_at.asc())
+            .options(selectinload(Message.sender))
+            .limit(limit)
+        )
         result = await self.db.execute(query)
         return list(result.scalars().all())
 
