@@ -1,10 +1,30 @@
+import enum
 from datetime import datetime
 from uuid import uuid4
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, Table
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, Table, Enum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.session import Base
+
+
+class ConversationType(str, enum.Enum):
+    direct = "direct"
+    group = "group"
+
+
+class MessageReadStatus(str, enum.Enum):
+    sent = "sent"
+    delivered = "delivered"
+    read = "read"
+
+
+conversation_participants = Table(
+    "conversation_participants",
+    Base.metadata,
+    Column("conversation_id", UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="CASCADE"), primary_key=True),
+    Column("user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+)
 
 
 user_room_association = Table(
@@ -26,6 +46,8 @@ class User(Base):
     
     rooms = relationship("ChatRoom", secondary=user_room_association, back_populates="members")
     messages = relationship("ChatMessage", back_populates="sender")
+    conversations = relationship("Conversation", secondary=conversation_participants, back_populates="participants")
+    messages_sent = relationship("Message", back_populates="sender")
 
 
 class ChatRoom(Base):
@@ -55,3 +77,29 @@ class ChatMessage(Base):
     
     room = relationship("ChatRoom", back_populates="messages")
     sender = relationship("User", back_populates="messages")
+
+
+class Conversation(Base):
+    __tablename__ = "conversations"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4, index=True)
+    type = Column(Enum(ConversationType), nullable=False, default=ConversationType.direct, index=True)
+    name = Column(String(255), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    
+    participants = relationship("User", secondary=conversation_participants, back_populates="conversations")
+    messages = relationship("Message", back_populates="conversation", cascade="all, delete-orphan")
+
+
+class Message(Base):
+    __tablename__ = "messages"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4, index=True)
+    sender_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    conversation_id = Column(UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    read_status = Column(Enum(MessageReadStatus), nullable=False, default=MessageReadStatus.sent, index=True)
+    
+    conversation = relationship("Conversation", back_populates="messages")
+    sender = relationship("User", back_populates="messages_sent")

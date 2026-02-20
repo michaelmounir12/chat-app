@@ -1,115 +1,118 @@
-from typing import Dict, Set, Optional
+from typing import Optional
 from uuid import UUID
+import json
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, status
 from app.core.security import verify_token
-from app.db.redis_client import get_redis
-from app.repositories.user_repository import UserRepository
 from app.db.session import AsyncSessionLocal
-import json
-import redis.asyncio as redis
+from app.repositories.user_repository import UserRepository
+from app.repositories.conversation_repository import ConversationRepository
+from app.websocket.manager import ConnectionManager
+from app.services.messaging_service import MessagingService
+from app.schemas.messaging import MessageCreate
 
 router = APIRouter()
-
-active_connections: Dict[int, Set[WebSocket]] = {}
-
-
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: Dict[int, Set[WebSocket]] = {}
-    
-    async def connect(self, websocket: WebSocket, user_id: UUID, room_id: int):
-        await websocket.accept()
-        
-        if room_id not in self.active_connections:
-            self.active_connections[room_id] = set()
-        
-        self.active_connections[room_id].add(websocket)
-    
-    def disconnect(self, websocket: WebSocket, room_id: int):
-        if room_id in self.active_connections:
-            self.active_connections[room_id].discard(websocket)
-            if not self.active_connections[room_id]:
-                del self.active_connections[room_id]
-    
-    async def send_personal_message(self, message: dict, websocket: WebSocket):
-        await websocket.send_json(message)
-    
-    async def broadcast_to_room(self, message: dict, room_id: int, exclude_websocket: WebSocket = None):
-        if room_id not in self.active_connections:
-            return
-        
-        disconnected = set()
-        for connection in self.active_connections[room_id]:
-            try:
-                if connection != exclude_websocket:
-                    await connection.send_json(message)
-            except Exception:
-                disconnected.add(connection)
-        
-        for connection in disconnected:
-            self.active_connections[room_id].discard(connection)
+ws_manager = ConnectionManager()
 
 
-manager = ConnectionManager()
-
-
-async def get_user_from_token(token: str) -> Optional[UUID]:
+async def get_user_id_from_token(token: str) -> Optional[UUID]:
     payload = verify_token(token)
     if payload is None:
         return None
-    
     user_id_str = payload.get("sub")
     if user_id_str is None:
         return None
-    
     try:
-        user_id = UUID(user_id_str) if isinstance(user_id_str, str) else user_id_str
+        return UUID(user_id_str) if isinstance(user_id_str, str) else user_id_str
     except (ValueError, TypeError):
         return None
-    
-    async with AsyncSessionLocal() as db:
-        user_repo = UserRepository(db)
-        user = await user_repo.get_by_id(user_id)
-        if user is None:
-            return None
-    
-    return user_id
 
 
-@router.websocket("/chat/{room_id}")
-async def websocket_endpoint(
+@router.websocket("/conversations/{conversation_id}")
+async def conversation_websocket(
     websocket: WebSocket,
-    room_id: int,
-    token: str = Query(...)
+    conversation_id: UUID,
+    token: str = Query(..., alias="token"),
 ):
-    user_id = await get_user_from_token(token)
-    
+    user_id = await get_user_id_from_token(token)
     if user_id is None:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
-    
-    await manager.connect(websocket, user_id, room_id)
-    
-    redis_client = await get_redis()
-    
+
+    async with AsyncSessionLocal() as db:
+        conv_repo = ConversationRepository(db)
+        conv = await conv_repo.get_with_participants(conversation_id)
+        if not conv:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+        if user_id not in {p.id for p in conv.participants}:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+
+    connection_id = await ws_manager.connect(websocket, user_id, conversation_id)
+
     try:
+        async with AsyncSessionLocal() as db:
+            messaging = MessagingService(db)
+            offline = await messaging.get_offline_messages(conversation_id, user_id)
+            for msg in offline:
+                payload = {
+                    "type": "offline_message",
+                    "id": str(msg.id),
+                    "sender_id": str(msg.sender_id),
+                    "conversation_id": str(msg.conversation_id),
+                    "content": msg.content,
+                    "timestamp": msg.created_at.isoformat(),
+                    "read_status": msg.read_status.value if hasattr(msg.read_status, "value") else str(msg.read_status),
+                }
+                if msg.sender:
+                    payload["sender"] = {"id": str(msg.sender.id), "username": msg.sender.username, "email": msg.sender.email}
+                await ws_manager.send_to_connection(connection_id, payload)
+            await messaging.mark_read(conversation_id, user_id)
+            await db.commit()
+
         while True:
             data = await websocket.receive_text()
-            message_data = json.loads(data)
-            
-            message = {
+            try:
+                body = json.loads(data)
+            except json.JSONDecodeError:
+                continue
+            content = (body.get("content") or "").strip()
+            if not content:
+                continue
+
+            async with AsyncSessionLocal() as db:
+                messaging = MessagingService(db)
+                try:
+                    msg = await messaging.send_message(
+                        user_id,
+                        MessageCreate(conversation_id=conversation_id, content=content),
+                    )
+                    await db.commit()
+                except Exception:
+                    await db.rollback()
+                    continue
+
+            payload = {
                 "type": "message",
-                "room_id": room_id,
-                "sender_id": user_id,
-                "content": message_data.get("content", ""),
-                "timestamp": message_data.get("timestamp")
+                "id": str(msg.id),
+                "sender_id": str(msg.sender_id),
+                "conversation_id": str(msg.conversation_id),
+                "content": msg.content,
+                "timestamp": msg.created_at.isoformat(),
+                "read_status": msg.read_status.value if hasattr(msg.read_status, "value") else str(msg.read_status),
             }
-            
-            await redis_client.publish(f"chat:room:{room_id}", json.dumps(message))
-            await manager.broadcast_to_room(message, room_id, exclude_websocket=websocket)
-    
+            if msg.sender:
+                payload["sender"] = {"id": str(msg.sender.id), "username": msg.sender.username, "email": msg.sender.email}
+
+            await ws_manager.broadcast_to_conversation(
+                conversation_id,
+                payload,
+                exclude_connection_id=connection_id,
+            )
+            await ws_manager.send_to_connection(connection_id, payload)
+
     except WebSocketDisconnect:
-        manager.disconnect(websocket, room_id)
-    except Exception as e:
-        manager.disconnect(websocket, room_id)
+        await ws_manager.disconnect(connection_id, conversation_id)
+    except Exception:
+        await ws_manager.disconnect(connection_id, conversation_id)
         raise
