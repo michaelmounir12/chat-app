@@ -1,4 +1,5 @@
-from typing import Dict, Set
+from typing import Dict, Set, Optional
+from uuid import UUID
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, status
 from app.core.security import verify_token
 from app.db.redis_client import get_redis
@@ -16,7 +17,7 @@ class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[int, Set[WebSocket]] = {}
     
-    async def connect(self, websocket: WebSocket, user_id: int, room_id: int):
+    async def connect(self, websocket: WebSocket, user_id: UUID, room_id: int):
         await websocket.accept()
         
         if room_id not in self.active_connections:
@@ -52,13 +53,18 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
-async def get_user_from_token(token: str) -> int:
+async def get_user_from_token(token: str) -> Optional[UUID]:
     payload = verify_token(token)
     if payload is None:
         return None
     
-    user_id: int = payload.get("sub")
-    if user_id is None:
+    user_id_str = payload.get("sub")
+    if user_id_str is None:
+        return None
+    
+    try:
+        user_id = UUID(user_id_str) if isinstance(user_id_str, str) else user_id_str
+    except (ValueError, TypeError):
         return None
     
     async with AsyncSessionLocal() as db:

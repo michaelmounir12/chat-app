@@ -1,10 +1,12 @@
-from typing import Generic, TypeVar, Type, Optional, List, Dict, Any
+from typing import Generic, TypeVar, Type, Optional, List, Dict, Any, Union
+from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete
 from sqlalchemy.orm import selectinload
 from app.db.session import Base
 
 ModelType = TypeVar("ModelType", bound=Base)
+IdType = Union[int, UUID]
 
 
 class BaseRepository(Generic[ModelType]):
@@ -12,7 +14,7 @@ class BaseRepository(Generic[ModelType]):
         self.db = db
         self.model = model
     
-    async def get_by_id(self, id: int, options: Optional[List] = None) -> Optional[ModelType]:
+    async def get_by_id(self, id: IdType, options: Optional[List] = None) -> Optional[ModelType]:
         query = select(self.model).where(self.model.id == id)
         
         if options:
@@ -51,13 +53,13 @@ class BaseRepository(Generic[ModelType]):
         await self.db.refresh(db_obj)
         return db_obj
     
-    async def update(self, id: int, obj_in: Dict[str, Any]) -> Optional[ModelType]:
+    async def update(self, id: IdType, obj_in: Dict[str, Any]) -> Optional[ModelType]:
         query = update(self.model).where(self.model.id == id).values(**obj_in).returning(self.model)
         result = await self.db.execute(query)
         await self.db.flush()
         return result.scalar_one_or_none()
     
-    async def delete(self, id: int) -> bool:
+    async def delete(self, id: IdType) -> bool:
         query = delete(self.model).where(self.model.id == id)
         result = await self.db.execute(query)
         await self.db.flush()

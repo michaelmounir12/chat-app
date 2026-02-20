@@ -1,4 +1,5 @@
 from typing import Annotated
+from uuid import UUID
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dependencies import get_db, get_current_user
@@ -18,7 +19,7 @@ async def get_current_user_info(
 
 @router.get("/{user_id}", response_model=UserResponse)
 async def get_user(
-    user_id: int,
+    user_id: UUID,
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
     user_service = UserService(db)

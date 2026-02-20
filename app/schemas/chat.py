@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import List, Optional
+from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict
 from app.schemas.user import UserResponse
 
@@ -22,7 +23,7 @@ class ChatRoomUpdate(BaseModel):
 
 class ChatRoomResponse(ChatRoomBase):
     id: int
-    created_by_id: Optional[int]
+    created_by_id: Optional[UUID]
     created_at: datetime
     updated_at: datetime
     members: List[UserResponse] = []
@@ -41,7 +42,7 @@ class ChatMessageCreate(ChatMessageBase):
 class ChatMessageResponse(ChatMessageBase):
     id: int
     room_id: int
-    sender_id: int
+    sender_id: UUID
     sender: UserResponse
     created_at: datetime
     

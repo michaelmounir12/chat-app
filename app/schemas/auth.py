@@ -1,4 +1,5 @@
-from pydantic import BaseModel
+from uuid import UUID
+from pydantic import BaseModel, Field
 
 
 class Token(BaseModel):
@@ -7,5 +8,9 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str = Field(..., description="Refresh token to exchange for new access token")
+
+
 class TokenData(BaseModel):
-    user_id: int | None = None
+    user_id: UUID | None = None

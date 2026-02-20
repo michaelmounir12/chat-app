@@ -1,4 +1,5 @@
 from typing import List, Optional
+from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
 from app.repositories.chat_repository import ChatRoomRepository, ChatMessageRepository
@@ -12,7 +13,7 @@ class ChatService:
         self.message_repo = ChatMessageRepository(db)
         self.user_repo = UserRepository(db)
     
-    async def create_room(self, room_data: ChatRoomCreate, creator_id: int) -> ChatRoomResponse:
+    async def create_room(self, room_data: ChatRoomCreate, creator_id: UUID) -> ChatRoomResponse:
         existing_room = await self.room_repo.get_by_name(room_data.name)
         if existing_room:
             raise HTTPException(
@@ -39,11 +40,11 @@ class ChatService:
             )
         return ChatRoomResponse.model_validate(room)
     
-    async def get_user_rooms(self, user_id: int) -> List[ChatRoomResponse]:
+    async def get_user_rooms(self, user_id: UUID) -> List[ChatRoomResponse]:
         rooms = await self.room_repo.get_user_rooms(user_id)
         return [ChatRoomResponse.model_validate(room) for room in rooms]
     
-    async def update_room(self, room_id: int, room_data: ChatRoomUpdate, user_id: int) -> ChatRoomResponse:
+    async def update_room(self, room_id: int, room_data: ChatRoomUpdate, user_id: UUID) -> ChatRoomResponse:
         room = await self.room_repo.get_by_id(room_id)
         if not room:
             raise HTTPException(
@@ -70,7 +71,7 @@ class ChatService:
         updated_room = await self.room_repo.update(room_id, update_data)
         return ChatRoomResponse.model_validate(updated_room)
     
-    async def add_member_to_room(self, room_id: int, user_id: int, requester_id: int) -> ChatRoomResponse:
+    async def add_member_to_room(self, room_id: int, user_id: UUID, requester_id: UUID) -> ChatRoomResponse:
         room = await self.room_repo.get_by_id(room_id)
         if not room:
             raise HTTPException(
@@ -101,7 +102,7 @@ class ChatService:
         updated_room = await self.room_repo.get_by_id(room_id)
         return ChatRoomResponse.model_validate(updated_room)
     
-    async def remove_member_from_room(self, room_id: int, user_id: int, requester_id: int) -> ChatRoomResponse:
+    async def remove_member_from_room(self, room_id: int, user_id: UUID, requester_id: UUID) -> ChatRoomResponse:
         room = await self.room_repo.get_by_id(room_id)
         if not room:
             raise HTTPException(
@@ -125,7 +126,7 @@ class ChatService:
         updated_room = await self.room_repo.get_by_id(room_id)
         return ChatRoomResponse.model_validate(updated_room)
     
-    async def create_message(self, message_data: ChatMessageCreate, sender_id: int) -> ChatMessageResponse:
+    async def create_message(self, message_data: ChatMessageCreate, sender_id: UUID) -> ChatMessageResponse:
         from sqlalchemy.orm import selectinload
         from app.db.models import ChatRoom
         

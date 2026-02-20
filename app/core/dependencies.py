@@ -1,4 +1,5 @@
 from typing import Annotated
+from uuid import UUID
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +15,7 @@ security = HTTPBearer()
 async def get_current_user_id(
     credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
     db: Annotated[AsyncSession, Depends(get_db)]
-) -> int:
+) -> UUID:
     token = credentials.credentials
     payload = verify_token(token)
     
@@ -25,11 +26,20 @@ async def get_current_user_id(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    user_id: int = payload.get("sub")
-    if user_id is None:
+    user_id_str = payload.get("sub")
+    if user_id_str is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token payload",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    try:
+        user_id = UUID(user_id_str) if isinstance(user_id_str, str) else user_id_str
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid user ID format in token",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
@@ -47,7 +57,7 @@ async def get_current_user_id(
 
 
 async def get_current_user(
-    user_id: Annotated[int, Depends(get_current_user_id)],
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
     user_repo = UserRepository(db)

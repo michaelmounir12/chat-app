@@ -1,4 +1,5 @@
 from typing import List, Optional
+from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from sqlalchemy.orm import selectinload
@@ -15,7 +16,7 @@ class ChatRoomRepository(BaseRepository[ChatRoom]):
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
     
-    async def get_user_rooms(self, user_id: int) -> List[ChatRoom]:
+    async def get_user_rooms(self, user_id: UUID) -> List[ChatRoom]:
         query = (
             select(ChatRoom)
             .where(ChatRoom.members.any(id=user_id))
@@ -24,7 +25,7 @@ class ChatRoomRepository(BaseRepository[ChatRoom]):
         result = await self.db.execute(query)
         return list(result.scalars().all())
     
-    async def add_member(self, room_id: int, user_id: int) -> bool:
+    async def add_member(self, room_id: int, user_id: UUID) -> bool:
         room = await self.get_by_id(room_id, options=[selectinload(ChatRoom.members)])
         if not room:
             return False
@@ -38,7 +39,7 @@ class ChatRoomRepository(BaseRepository[ChatRoom]):
             await self.db.flush()
         return True
     
-    async def remove_member(self, room_id: int, user_id: int) -> bool:
+    async def remove_member(self, room_id: int, user_id: UUID) -> bool:
         room = await self.get_by_id(room_id, options=[selectinload(ChatRoom.members)])
         if not room:
             return False
@@ -73,7 +74,7 @@ class ChatMessageRepository(BaseRepository[ChatMessage]):
         result = await self.db.execute(query)
         return list(result.scalars().all())
     
-    async def get_user_messages(self, user_id: int, skip: int = 0, limit: int = 100) -> List[ChatMessage]:
+    async def get_user_messages(self, user_id: UUID, skip: int = 0, limit: int = 100) -> List[ChatMessage]:
         query = (
             select(ChatMessage)
             .where(ChatMessage.sender_id == user_id)

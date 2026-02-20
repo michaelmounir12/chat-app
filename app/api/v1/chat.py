@@ -1,4 +1,5 @@
 from typing import Annotated, List
+from uuid import UUID
 from fastapi import APIRouter, Depends, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dependencies import get_db, get_current_user_id
@@ -17,7 +18,7 @@ router = APIRouter()
 @router.post("/rooms", response_model=ChatRoomResponse, status_code=status.HTTP_201_CREATED)
 async def create_room(
     room_data: ChatRoomCreate,
-    user_id: Annotated[int, Depends(get_current_user_id)],
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
     chat_service = ChatService(db)
@@ -26,7 +27,7 @@ async def create_room(
 
 @router.get("/rooms", response_model=List[ChatRoomResponse])
 async def get_my_rooms(
-    user_id: Annotated[int, Depends(get_current_user_id)],
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
     chat_service = ChatService(db)
@@ -46,7 +47,7 @@ async def get_room(
 async def update_room(
     room_id: int,
     room_data: ChatRoomUpdate,
-    user_id: Annotated[int, Depends(get_current_user_id)],
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
     chat_service = ChatService(db)
@@ -56,8 +57,8 @@ async def update_room(
 @router.post("/rooms/{room_id}/members/{member_id}", response_model=ChatRoomResponse)
 async def add_member_to_room(
     room_id: int,
-    member_id: int,
-    user_id: Annotated[int, Depends(get_current_user_id)],
+    member_id: UUID,
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
     chat_service = ChatService(db)
@@ -67,8 +68,8 @@ async def add_member_to_room(
 @router.delete("/rooms/{room_id}/members/{member_id}", response_model=ChatRoomResponse)
 async def remove_member_from_room(
     room_id: int,
-    member_id: int,
-    user_id: Annotated[int, Depends(get_current_user_id)],
+    member_id: UUID,
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
     chat_service = ChatService(db)
@@ -78,7 +79,7 @@ async def remove_member_from_room(
 @router.post("/messages", response_model=ChatMessageResponse, status_code=status.HTTP_201_CREATED)
 async def create_message(
     message_data: ChatMessageCreate,
-    user_id: Annotated[int, Depends(get_current_user_id)],
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
     chat_service = ChatService(db)
