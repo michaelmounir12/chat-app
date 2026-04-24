@@ -91,9 +91,9 @@ async def create_message(
 async def get_room_messages(
     room_id: int,
     user_id: Annotated[UUID, Depends(get_current_user_id)],
+    db: Annotated[AsyncSession, Depends(get_db)],
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=100),
-    db: Annotated[AsyncSession, Depends(get_db)]
+    limit: int = Query(100, ge=1, le=100)
 ):
     chat_service = ChatService(db)
     return await chat_service.get_room_messages(room_id, user_id, skip, limit)
