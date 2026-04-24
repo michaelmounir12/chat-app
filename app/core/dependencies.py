@@ -14,8 +14,8 @@ security = HTTPBearer()
 
 async def get_current_user_id(
     credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
-    db: Annotated[AsyncSession, Depends(get_db)]
 ) -> UUID:
+    """Extract and validate user ID from JWT token (no DB hit)."""
     token = credentials.credentials
     payload = verify_token(token)
     
@@ -43,6 +43,14 @@ async def get_current_user_id(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
+    return user_id
+
+
+async def get_current_user(
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Fetch user from DB (single query). Use this when you need the full User object."""
     user_repo = UserRepository(db)
     user = await user_repo.get_by_id(user_id)
     
@@ -51,22 +59,6 @@ async def get_current_user_id(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
             headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    return user_id
-
-
-async def get_current_user(
-    user_id: Annotated[UUID, Depends(get_current_user_id)],
-    db: Annotated[AsyncSession, Depends(get_db)]
-):
-    user_repo = UserRepository(db)
-    user = await user_repo.get_by_id(user_id)
-    
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
         )
     
     return user

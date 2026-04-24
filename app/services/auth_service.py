@@ -30,7 +30,7 @@ class AuthService:
             token_type="bearer"
         )
     
-    async def register(self, user_data: UserCreate) -> tuple[Token, UserCreate]:
+    async def register(self, user_data: UserCreate) -> tuple[Token, "UserResponse"]:
         user = await self.user_service.create_user(user_data)
         
         access_token = create_access_token(data={"sub": str(user.id)})

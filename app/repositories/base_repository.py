@@ -54,10 +54,12 @@ class BaseRepository(Generic[ModelType]):
         return db_obj
     
     async def update(self, id: IdType, obj_in: Dict[str, Any]) -> Optional[ModelType]:
-        query = update(self.model).where(self.model.id == id).values(**obj_in).returning(self.model)
+        query = update(self.model).where(self.model.id == id).values(**obj_in)
         result = await self.db.execute(query)
         await self.db.flush()
-        return result.scalar_one_or_none()
+        if result.rowcount == 0:
+            return None
+        return await self.get_by_id(id)
     
     async def delete(self, id: IdType) -> bool:
         query = delete(self.model).where(self.model.id == id)

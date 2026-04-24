@@ -6,12 +6,11 @@ from app.core.security import verify_token
 from app.db.session import AsyncSessionLocal
 from app.repositories.user_repository import UserRepository
 from app.repositories.conversation_repository import ConversationRepository
-from app.websocket.manager import ConnectionManager
+from app.websocket.manager import ws_manager
 from app.services.messaging_service import MessagingService
 from app.schemas.messaging import MessageCreate
 
 router = APIRouter()
-ws_manager = ConnectionManager()
 
 
 async def get_user_id_from_token(token: str) -> Optional[UUID]:
@@ -96,10 +95,10 @@ async def conversation_websocket(
                     "typing_users": [
                         {
                             "user_id": uid,
-                            "username": data.get("username", ""),
-                            "timestamp": data.get("timestamp", ""),
+                            "username": t_data.get("username", ""),
+                            "timestamp": t_data.get("timestamp", ""),
                         }
-                        for uid, data in typing_users.items()
+                        for uid, t_data in typing_users.items()
                     ],
                 }
                 await ws_manager.broadcast_to_conversation(conversation_id, payload)

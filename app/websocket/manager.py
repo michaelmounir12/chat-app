@@ -113,3 +113,7 @@ class ConnectionManager:
                 except Exception:
                     pass
         return False
+
+
+# Shared singleton — import this from any module that needs the manager
+ws_manager = ConnectionManager()

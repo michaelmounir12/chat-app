@@ -1,7 +1,9 @@
 from typing import List, Optional
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status
+from app.db.models import ChatRoom
 from app.repositories.chat_repository import ChatRoomRepository, ChatMessageRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.chat import ChatRoomCreate, ChatRoomUpdate, ChatRoomResponse, ChatMessageCreate, ChatMessageResponse
@@ -28,16 +30,23 @@ class ChatService:
         
         await self.room_repo.add_member(room.id, creator_id)
         
-        room = await self.room_repo.get_by_id(room.id)
+        room = await self.room_repo.get_by_id(room.id, options=[selectinload(ChatRoom.members)])
         return ChatRoomResponse.model_validate(room)
     
-    async def get_room_by_id(self, room_id: int) -> ChatRoomResponse:
-        room = await self.room_repo.get_by_id(room_id)
+    async def get_room_by_id(self, room_id: int, user_id: UUID = None) -> ChatRoomResponse:
+        room = await self.room_repo.get_by_id(room_id, options=[selectinload(ChatRoom.members)])
         if not room:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Room not found"
             )
+        
+        if user_id and user_id not in [m.id for m in room.members]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You must be a member to access this room"
+            )
+            
         return ChatRoomResponse.model_validate(room)
     
     async def get_user_rooms(self, user_id: UUID) -> List[ChatRoomResponse]:
@@ -45,7 +54,7 @@ class ChatService:
         return [ChatRoomResponse.model_validate(room) for room in rooms]
     
     async def update_room(self, room_id: int, room_data: ChatRoomUpdate, user_id: UUID) -> ChatRoomResponse:
-        room = await self.room_repo.get_by_id(room_id)
+        room = await self.room_repo.get_by_id(room_id, options=[selectinload(ChatRoom.members)])
         if not room:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -68,11 +77,12 @@ class ChatService:
                     detail="Room name already exists"
                 )
         
-        updated_room = await self.room_repo.update(room_id, update_data)
+        await self.room_repo.update(room_id, update_data)
+        updated_room = await self.room_repo.get_by_id(room_id, options=[selectinload(ChatRoom.members)])
         return ChatRoomResponse.model_validate(updated_room)
     
     async def add_member_to_room(self, room_id: int, user_id: UUID, requester_id: UUID) -> ChatRoomResponse:
-        room = await self.room_repo.get_by_id(room_id)
+        room = await self.room_repo.get_by_id(room_id, options=[selectinload(ChatRoom.members)])
         if not room:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -99,11 +109,11 @@ class ChatService:
                 detail="Failed to add member to room"
             )
         
-        updated_room = await self.room_repo.get_by_id(room_id)
+        updated_room = await self.room_repo.get_by_id(room_id, options=[selectinload(ChatRoom.members)])
         return ChatRoomResponse.model_validate(updated_room)
     
     async def remove_member_from_room(self, room_id: int, user_id: UUID, requester_id: UUID) -> ChatRoomResponse:
-        room = await self.room_repo.get_by_id(room_id)
+        room = await self.room_repo.get_by_id(room_id, options=[selectinload(ChatRoom.members)])
         if not room:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -123,7 +133,7 @@ class ChatService:
                 detail="Failed to remove member from room"
             )
         
-        updated_room = await self.room_repo.get_by_id(room_id)
+        updated_room = await self.room_repo.get_by_id(room_id, options=[selectinload(ChatRoom.members)])
         return ChatRoomResponse.model_validate(updated_room)
     
     async def create_message(self, message_data: ChatMessageCreate, sender_id: UUID) -> ChatMessageResponse:
@@ -154,12 +164,18 @@ class ChatService:
         message = await self.message_repo.get_by_id(message.id)
         return ChatMessageResponse.model_validate(message)
     
-    async def get_room_messages(self, room_id: int, skip: int = 0, limit: int = 100) -> List[ChatMessageResponse]:
-        room = await self.room_repo.get_by_id(room_id)
+    async def get_room_messages(self, room_id: int, user_id: UUID = None, skip: int = 0, limit: int = 100) -> List[ChatMessageResponse]:
+        room = await self.room_repo.get_by_id(room_id, options=[selectinload(ChatRoom.members)])
         if not room:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Room not found"
+            )
+        
+        if user_id and user_id not in [m.id for m in room.members]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You must be a member to view messages in this room"
             )
         
         messages = await self.message_repo.get_room_messages(room_id, skip, limit)

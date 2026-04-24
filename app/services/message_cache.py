@@ -38,6 +38,7 @@ class MessageCacheService:
             except (json.JSONDecodeError, TypeError):
                 continue
         
+        messages.reverse()
         return messages
 
     @staticmethod

@@ -10,3 +10,4 @@ python-multipart==0.0.12
 redis==5.2.0
 alembic==1.14.0
 python-dotenv==1.0.1
+email-validator>=2.0.0
